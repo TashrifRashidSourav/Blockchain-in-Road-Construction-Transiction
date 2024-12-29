@@ -1,34 +1,48 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.28;
-
-// Uncomment this line to use console.log
-// import "hardhat/console.sol";
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
 
 contract Lock {
-    uint public unlockTime;
-    address payable public owner;
+    address public owner;
+    uint256 public unlockTime;
+    uint256 public lockedAmount;
 
-    event Withdrawal(uint amount, uint when);
-
-    constructor(uint _unlockTime) payable {
-        require(
-            block.timestamp < _unlockTime,
-            "Unlock time should be in the future"
-        );
-
+    event Withdraw(address indexed to, uint256 amount);
+    
+    constructor(uint256 _unlockTime) payable {
+        require(_unlockTime > block.timestamp, "Unlock time should be in the future");
+        owner = msg.sender;
         unlockTime = _unlockTime;
-        owner = payable(msg.sender);
+        lockedAmount = msg.value;
     }
 
-    function withdraw() public {
-        // Uncomment this line, and the import of "hardhat/console.sol", to print a log in your terminal
-        // console.log("Unlock time is %o and block timestamp is %o", unlockTime, block.timestamp);
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Only the owner can perform this action");
+        _;
+    }
 
-        require(block.timestamp >= unlockTime, "You can't withdraw yet");
-        require(msg.sender == owner, "You aren't the owner");
+    modifier hasPassedUnlockTime() {
+        require(block.timestamp >= unlockTime, "Unlock time has not yet passed");
+        _;
+    }
 
-        emit Withdrawal(address(this).balance, block.timestamp);
+    modifier notYetUnlocked() {
+        require(block.timestamp < unlockTime, "Unlock time has already passed");
+        _;
+    }
 
-        owner.transfer(address(this).balance);
+    function withdraw() external onlyOwner hasPassedUnlockTime {
+        uint256 amount = lockedAmount;
+        lockedAmount = 0;
+        payable(owner).transfer(amount);
+        emit Withdraw(owner, amount);
+    }
+
+    function extendLockTime(uint256 _newUnlockTime) external onlyOwner notYetUnlocked {
+        require(_newUnlockTime > unlockTime, "New unlock time must be later than the current unlock time");
+        unlockTime = _newUnlockTime;
+    }
+
+    receive() external payable {
+        lockedAmount += msg.value;
     }
 }
